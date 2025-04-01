@@ -1,16 +1,8 @@
-'use client';
-
-import { useState } from 'react';
-import dynamic from 'next/dynamic';
+import React, { useState } from 'react';
+import Editor from '@monaco-editor/react';
 import { Send, Code2, FileJson } from 'lucide-react';
 
-// Dynamically import Monaco Editor to avoid SSR issues
-const MonacoEditor = dynamic(
-  () => import('@monaco-editor/react'),
-  { ssr: false }
-);
-
-export default function Home() {
+function App() {
   const [code, setCode] = useState('// Write your code here...');
   const [output, setOutput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -27,14 +19,7 @@ export default function Home() {
         timestamp: new Date().toISOString(),
       };
 
-      // Here you would typically send to your backend using Next.js API routes
-      // const response = await fetch('/api/process-code', {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify(payload),
-      // });
-      // const data = await response.json();
-      
+      // Here you would typically send to your backend
       // For now, we'll just show the JSON output
       setOutput(JSON.stringify(payload, null, 2));
     } catch (error) {
@@ -68,7 +53,7 @@ export default function Home() {
               </button>
             </div>
             <div className="h-[500px]">
-              <MonacoEditor
+              <Editor
                 height="100%"
                 defaultLanguage="javascript"
                 theme="vs-dark"
@@ -98,3 +83,5 @@ export default function Home() {
     </div>
   );
 }
+
+export default App;
