@@ -5,8 +5,8 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Code Editor",
-  description: "A modern code editor with JSON output",
+  title: "BugFixerAI",
+  description: "A modern code editor with running output and AI analysing",
 };
 
 export default function RootLayout({
