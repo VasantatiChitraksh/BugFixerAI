@@ -58,7 +58,7 @@ function App() {
         {/* Header */}
         <div className="flex items-center gap-2 mb-4">
           <Code2 className="w-6 h-6 text-blue-400" />
-          <h1 className="text-2xl font-bold">Online Code Compiler</h1>
+          <h1 className="text-2xl font-bold">BugFixerAI</h1>
         </div>
 
         {/* Language Selector */}
