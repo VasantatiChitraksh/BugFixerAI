@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Code is required" }, { status: 400 });
     }
 
-    const prompt = `Analyze the following code for errors, best practices, and optimizations:\n\n${code}`;
+    const prompt = `Analyze the following code for errors, best practices, and optimizations. Format the response in simple, structured sentences without Markdown symbols:\n\n${code}`;
 
     const response = await axios.post(
       `${GEMINI_API_URL}?key=${GEMINI_API_KEY}`,
@@ -29,7 +29,13 @@ export async function POST(req: NextRequest) {
     );
 
     const contentObj = response.data.candidates?.[0]?.content;
-    const extractedText = contentObj?.parts?.map((p: any) => p.text).join(" ") || null;
+    let extractedText = contentObj?.parts?.map((p: any) => p.text).join(" ") || null;
+
+    // **Cleaning up Markdown Symbols (if present)**
+    extractedText = extractedText
+      ?.replace(/[*#`]/g, "") // Remove *, #, and ` symbols
+      .replace(/\n\s*\n/g, "\n") // Remove excessive new lines
+      .trim();
 
     return NextResponse.json({ analysis: extractedText });
   } catch (error) {
