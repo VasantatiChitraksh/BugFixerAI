@@ -31,7 +31,6 @@ Thumbs.db
 
 # Editor settings
 .idea/
-.vscode/
 *.iml
 
 # Build artifacts
