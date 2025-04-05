@@ -9,13 +9,16 @@
   "categories": [
     "Other"
   ],
-  "activationEvents": [],
+  "activationEvents": ["*"],
   "main": "./extension.js",
   "contributes": {
     "commands": [{
       "command": "extension.helloWorld",
       "title": "Hello World"
-    }]
+    },      {
+        "command": "extension.analyzeCurrentFile",
+        "title": "Analyze Current File"
+      }]
   },
   "scripts": {
     "lint": "eslint .",
@@ -29,5 +32,14 @@
     "eslint": "^9.23.0",
     "@vscode/test-cli": "^0.0.10",
     "@vscode/test-electron": "^2.4.1"
-  }
+  },
+  "menus": {
+    "editor/title": [
+      {
+        "command": "test.analyzeCurrentFile",
+        "when": "editorLangId != markdown",
+        "group": "navigation"
+      }
+     ]
+    }
 }
