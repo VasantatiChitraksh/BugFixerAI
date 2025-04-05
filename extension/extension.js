@@ -119,52 +119,252 @@ async function analyzeCode(code) {
 function getInitialHtml() {
   return `
     <!DOCTYPE html>
-    <html lang="en">
-    <head>
-      <meta charset="UTF-8">
-      <style>
-        body {
-          font-family: sans-serif;
-          padding: 1rem;
-          background: #f9f9f9;
-        }
-        button {
-          padding: 0.5rem 1rem;
-          margin-right: 0.5rem;
-          background: #007acc;
-          color: white;
-          border: none;
-          border-radius: 4px;
-          cursor: pointer;
-        }
-        pre {
-          margin-top: 1rem;
-          background: #eee;
-          padding: 1rem;
-          border-radius: 6px;
-          white-space: pre-wrap;
-        }
-      </style>
-    </head>
-    <body>
-      <button onclick="analyze()">Analyze Code</button>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    :root {
+      --bg-light: #ffffff;
+      --text-light: #333333;
+      --button-bg-light: #0078d4;
+      --button-hover-light: #106ebe;
+      --pre-bg-light: #f3f3f3;
+      --pre-border-light: #e0e0e0;
       
-      <pre id="output">Click "Analyze Code" to see the analysis here.</pre>
+      --bg-dark: #1e1e1e;
+      --text-dark: #e0e0e0;
+      --button-bg-dark: #0e639c;
+      --button-hover-dark: #1177bb;
+      --pre-bg-dark: #252526;
+      --pre-border-dark: #3c3c3c;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+      padding: 1.5rem;
+      line-height: 1.5;
+      margin: 0;
+      transition: background-color 0.3s, color 0.3s;
+    }
+    
+    body.light-mode {
+      background-color: var(--bg-light);
+      color: var(--text-light);
+    }
+    
+    body.dark-mode {
+      background-color: var(--bg-dark);
+      color: var(--text-dark);
+    }
+    
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1.5rem;
+    }
+    
+    .title {
+      font-size: 1.25rem;
+      font-weight: 600;
+      margin: 0;
+    }
+    
+    .button-group {
+      display: flex;
+      gap: 0.75rem;
+      align-items: center;
+    }
+    
+    button.primary {
+      padding: 0.5rem 1rem;
+      border: none;
+      border-radius: 4px;
+      font-weight: 500;
+      font-size: 0.875rem;
+      cursor: pointer;
+      transition: background-color 0.2s, transform 0.1s;
+    }
+    
+    button.primary:hover {
+      transform: translateY(-1px);
+    }
+    
+    button.primary:active {
+      transform: translateY(0);
+    }
+    
+    .light-mode button.primary {
+      background-color: var(--button-bg-light);
+      color: white;
+    }
+    
+    .light-mode button.primary:hover {
+      background-color: var(--button-hover-light);
+    }
+    
+    .dark-mode button.primary {
+      background-color: var(--button-bg-dark);
+      color: white;
+    }
+    
+    .dark-mode button.primary:hover {
+      background-color: var(--button-hover-dark);
+    }
+    
+    /* Theme toggle slider */
+    .theme-toggle {
+      position: relative;
+      display: inline-block;
+      width: 60px;
+      height: 28px;
+    }
+    
+    .theme-toggle input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: #ccc;
+      transition: .4s;
+      border-radius: 34px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 6px;
+    }
+    
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 20px;
+      width: 20px;
+      left: 4px;
+      bottom: 4px;
+      background-color: white;
+      transition: .4s;
+      border-radius: 50%;
+      z-index: 2;
+    }
+    
+    input:checked + .slider {
+      background-color: #2c2c2c;
+    }
+    
+    input:checked + .slider:before {
+      transform: translateX(32px);
+    }
+    
+    .dark-icon, .light-icon {
+      color: white;
+      font-size: 14px;
+      z-index: 1;
+    }
+    
+    pre {
+      margin-top: 1rem;
+      padding: 1.25rem;
+      border-radius: 6px;
+      font-family: 'SF Mono', Monaco, Menlo, Consolas, 'Courier New', monospace;
+      font-size: 0.9rem;
+      overflow: auto;
+      white-space: pre-wrap;
+      transition: background-color 0.3s, border-color 0.3s;
+    }
+    
+    .light-mode pre {
+      background-color: var(--pre-bg-light);
+      border: 1px solid var(--pre-border-light);
+    }
+    
+    .dark-mode pre {
+      background-color: var(--pre-bg-dark);
+      border: 1px solid var(--pre-border-dark);
+    }
+    
+    .output-container {
+      position: relative;
+    }
+    
+    .status-indicator {
+      position: absolute;
+      top: 1rem;
+      right: 1rem;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+    }
+    
+    .light-mode .status-indicator {
+      background-color: #888;
+    }
+    
+    .dark-mode .status-indicator {
+      background-color: #aaa;
+    }
+  </style>
+</head>
+<body class="light-mode">
+  <div class="container">
+    <div class="header">
+      <h1 class="title">Code Analysis Tool</h1>
+      <div class="button-group">
+        <button onclick="analyze()" class="primary">Analyze Code</button>
+        <label class="theme-toggle">
+          <input type="checkbox" id="themeToggle" onchange="toggleTheme()">
+          <span class="slider">
+            <span class="light-icon">☀️</span>
+            <span class="dark-icon">🌙</span>
+          </span>
+        </label>
+      </div>
+    </div>
+    
+    <div class="output-container">
+      <span class="status-indicator"></span>
+      <pre id="output">Click "Analyze Code" to see the analysis results here.</pre>
+    </div>
+  </div>
 
-      <script>
-        const vscode = acquireVsCodeApi();
-        function analyze() {
-          vscode.postMessage({ command: 'analyze' });
-        }
-        window.addEventListener('message', event => {
-          const message = event.data;
-          if (message.command === 'display') {
-            document.getElementById('output').innerText = message.content;
-          }
-        });
-      </script>
-    </body>
-    </html>
+  <script>
+    const vscode = acquireVsCodeApi();
+    function analyze() {
+      vscode.postMessage({ command: 'analyze' });
+    }
+    window.addEventListener('message', event => {
+      const message = event.data;
+      if (message.command === 'display') {
+        document.getElementById('output').innerText = message.content;
+      }
+    });
+    
+    function toggleTheme() {
+      const body = document.body;
+      if (body.classList.contains('light-mode')) {
+        body.classList.remove('light-mode');
+        body.classList.add('dark-mode');
+      } else {
+        body.classList.remove('dark-mode');
+        body.classList.add('light-mode');
+      }
+    }
+  </script>
+</body>
+</html>
   `;
 }
 
