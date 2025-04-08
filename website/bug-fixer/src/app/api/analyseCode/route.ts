@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Code is required" }, { status: 400 });
     }
 
-    const prompt = `Analyze the following code for errors, best practices, and optimizations. Format the response in simple, structured sentences without Markdown symbols:\n\n${code}`;
+    const prompt = `Analyze the following code line by line. Check each line for syntax errors, logical issues, performance problems, and violations of coding best practices related to readability, efficiency, and maintainability. Only include lines that have errors or could be improved, along with a clear explanation for each issue. If the entire code is correct and follows best practices, provide a simple and clear explanation of what the complete code is doing. Use plain English with no Markdown symbols, no code blocks, and no unnecessary formatting. Keep the explanation concise and beginner-friendly.\n\n${code}`;
 
     const response = await axios.post(
       `${GEMINI_API_URL}?key=${GEMINI_API_KEY}`,
