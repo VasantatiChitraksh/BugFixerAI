@@ -1,50 +1,91 @@
-# **BugFixerAI: Automated Program Repair Tool**
+# BugFixerAI
 
-## 🚀 Overview
-BugFixerAI is an Automated Program Repair (APR) tool designed to detect and fix common backend bugs with minimal manual intervention. Leveraging the power of Large Language Models (LLMs) and static code analysis, this tool enhances software reliability by identifying and correcting issues before deployment.
+BugFixerAI is an innovative tool that leverages Large Language Models (LLMs) to identify and fix bugs in code across multiple programming languages. The project consists of two main components:
 
-## 🎯 Project Goals
-- Automate the detection and resolution of backend software bugs.
-- Integrate seamlessly with development environments and version control systems.
-- Focus on static code repair for efficient and effective debugging.
+- **Web-based Interface:**  
+  Provides an interactive environment to compile, analyze, and debug code.  
+- **VSCode Extension:**  
+  Automatically detects and repairs runtime bugs (e.g., path errors, segmentation faults, logical flaws) using LLM-based insights.
 
-## 🔥 Key Features
-✅ **Targeted Bug Fixing**: Focuses on common backend issues such as:
-- **Path & Configuration Errors**
-- **Database Connectivity Issues**
-- **API Integration Faults**
+The primary goal of BugFixerAI is to offer a seamless debugging experience, enabling both manual and automatic code repair with high precision.
 
-✅ **Static Code Analysis**: Identifies potential errors without executing the program, ensuring faster and safer bug detection.
+---
 
-✅ **LLM-Powered Repairs**: Utilizes AI-driven code suggestions to enhance debugging efficiency.
+## Features Implemented in Release-1
 
-✅ **Seamless Integration**: Works with popular version control systems for smooth adoption.
+### Website
 
-## ⚙️ How It Works
-1. **Scan the Codebase**: The tool analyzes the source code for common backend issues.
-2. **Identify Bugs**: Uses predefined rules and AI models to detect potential errors.
-3. **Suggest Fixes**: Provides AI-driven repair suggestions to resolve detected issues.
-4. **Apply Fixes**: Developers can review and apply suggested fixes automatically or manually.
+- **Multilingual Online Compiler:**  
+  Write, execute, and test code in multiple languages directly from the browser with fast, reliable output—ideal for hands-on learning and prototyping.
 
-## 📌 Why Static Repair?
-- **Faster Debugging**: Detects issues before runtime.
-- **Lower Performance Overhead**: No need for application execution.
-- **Preemptive Bug Prevention**: Reduces the risk of runtime failures.
+- **Intelligent Code Analyser:**  
+  Interprets code logic to detect potential issues such as logical errors, bad practices, or edge cases before they become bugs, while explaining the reasons behind these issues.
 
-## 🏗️ Development Roadmap (1-Month Plan)
-1. **Week 1**: Define bug categories and set up LLM integration.
-2. **Week 2**: Implement static code analysis techniques.
-3. **Week 3**: Develop an interface for reviewing and applying fixes.
-4. **Week 4**: Test extensively and optimize for performance.
+- **Interactive Debugger (LLM-Powered):**  
+  Connects to a local LLM-based API, acting as an intelligent code companion that helps users fix bugs and explore alternative implementations.
 
-## 🔧 Tech Stack
-- **Programming Language**: Python
-- **AI Model**: OpenAI Codex / GPT-based LLM
-- **Static Analysis Tools**: PyLint, ESLint, or custom rule-based analyzers
-- **Version Control Integration**: GitHub/GitLab API
 
-## 📜 License
-This project is open-source under the [MIT License](LICENSE).
+### VSCode Extension
 
-## 🤝 Contributing
-We welcome contributions! Feel free to submit issues, feature requests, or pull requests.
+- **On-the-Fly Static Code Analysis:**  
+  Integrates directly into VSCode to automatically analyze the active file, highlighting inefficiencies, bad practices, and hidden bugs without switching contexts.
+
+- **Context-Aware File Detection:**  
+  Automatically recognizes and analyses the open file based on its language and structure, providing dynamic insights and intelligent suggestions.
+
+---
+
+## Methodology
+
+The development of BugFixerAI followed a structured and research-backed approach to ensure clarity, collaboration, and consistent progress:
+
+1. **Research and Ideation:**  
+   - Conducted extensive literature reviews on Automatic Program Repair (APR), LLM-assisted debugging, and code analysis.  
+   - Identified gaps in existing tools, inspiring a modular design that combines manual intervention with automated debugging.
+
+2. **Design and Planning:**  
+   - Created a flowchart-based architecture for the VSCode extension outlining key stages:  
+     - **Code Parsing:** Syntax and semantic analysis  
+     - **Code Analysis:** Identification of anomalies, static bugs, or logical errors  
+     - **Bug Detection & Suggestion:** Leveraging LLMs to propose fixes  
+     - **Code Replacement:** Safely integrating corrections  
+   - Divided work based on clear feature prioritization.
+
+3. **Agile Development Using Scrum:**  
+   - Daily standups, weekly sprints, and retrospectives ensured team alignment and momentum.  
+   - Continuous Integration was adopted via GitHub, Notion/Docs, and local GPU clusters for testing.
+
+4. **Testing and Iteration:**  
+   - Continuous evaluation of LLM outputs against known bugs ensured reliability.  
+   - The custom API was benchmarked for performance (accuracy vs. latency), and usability tests refined the frontend experience.
+
+---
+
+## Techniques and Implementation
+
+1. **LLM Integration:**  
+   - Utilized advanced LLMs (via Gemini API and custom-trained models) for static code analysis, bug-fixing suggestions, and explaining errors.
+
+2. **Multi-language Compiler Integration:**  
+   - Integrated Judge0 API for secure, robust, and real-time multi-language code compilation with support for various file types.
+
+3. **Efficient API Design:**  
+   - Developed a custom debugging API running on a DGX server with GPU acceleration, ensuring high accuracy in bug analysis and fix generation.
+
+4. **Interactive Frontend Architecture:**  
+   - Built with Next.js (MERN stack) to provide real-time code input/output interactions, dynamic language-specific compiler settings, and visual feedback.
+
+5. **Extension-Environment Awareness:**  
+   - The VSCode extension, built in JavaScript, automatically detects the active file and delivers intelligent static analysis and suggestions without manual setup.
+
+6. **Modular System Design:**  
+   - Components like the compiler, analyser, and debugger are designed as independent microservices, facilitating easier maintenance and future upgrades.
+
+7. **Model Evaluation and Testing:**  
+   - Multiple debugging models were tested for accuracy in code structure understanding and the ability to resolve logical versus syntax/runtime errors.  
+   - Metrics such as latency, accuracy, and compatibility with multi-language inputs were rigorously recorded.
+
+8. **Security & Isolation:**  
+   - Execution environments are sandboxed for safety, ensuring that compiling untrusted code via Judge0 or through the extension remains secure.
+
+---
