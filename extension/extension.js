@@ -39,6 +39,8 @@
 // }
 const vscode = require('vscode');
 const axios = require('axios');
+const fs = require('fs');
+const path = require('path');
 
 const GEMINI_API_URL =
   "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
@@ -75,7 +77,7 @@ function activate(context) {
             }
 
             const content = editor.document.getText();
-            const analysis = await analyzeCode(content);
+            const analysis = await analyzeCodeWithPathCheck(content);
             panel?.webview.postMessage({ command: 'display', content: analysis });
           }
         });
@@ -87,12 +89,40 @@ function activate(context) {
     })
   );
 
-  // Optional: Activate panel on VS Code startup
   vscode.commands.executeCommand('extension.activateAnalyzer');
 }
 
+async function analyzeCodeWithPathCheck(code) {
+  const analysis = await analyzeCode(code);
+  const pathWarnings = await analyzeFilePaths(code);
+
+  if (pathWarnings) {
+    return `${analysis}\n\n⚠️ File Path Issues Detected:\n${pathWarnings}`;
+  }
+
+  return analysis;
+}
+
 async function analyzeCode(code) {
-  const prompt = `Analyze the following code line by line. Check each line for syntax errors, logical issues, performance problems, and violations of coding best practices related to readability, efficiency, and maintainability. Only include lines that have errors or could be improved, along with a clear explanation for each issue. If the entire code is correct and follows best practices, provide a simple and clear explanation of what the complete code is doing. Use plain English with no Markdown symbols, no code blocks, and no unnecessary formatting. Keep the explanation concise and beginner-friendly.\n\n${code}`;
+  const prompt = `Analyze the following code line by line. For each line, report only if there is an issue or room for improvement.
+   Use a neat, point‑wise list with a blank line between each point.
+
+1. Syntax errors  
+2. Logical issues  
+3. Performance problems  
+4. Violations of coding best practices (readability, efficiency, maintainability)
+
+If no issues are found, provide a concise summary of what the code does.
+
+Format guidelines:
+ Begin each point with “Line <number>:”  
+ Follow with a single, clear sentence describing the issue or improvement  
+ Leave one blank line between points  
+ Use plain English, no Markdown symbols, no code blocks, no extra formatting  
+ Keep explanations concise and beginner‑friendly
+
+Here is the code to analyze:
+\n\n${code}`;
 
   try {
     const response = await axios.post(
@@ -114,6 +144,41 @@ async function analyzeCode(code) {
     console.error("Gemini API Error:", err);
     return "Error analyzing code.";
   }
+}
+
+async function analyzeFilePaths(code) {
+  const workspaceFolders = vscode.workspace.workspaceFolders;
+  if (!workspaceFolders || workspaceFolders.length === 0) return '';
+
+  const rootPath = workspaceFolders[0].uri.fsPath;
+  const pathRegex = /(?:require\(|import .*? from |fs\.(?:readFileSync|readFile|existsSync|openSync|writeFileSync)\()(['"])([^'"]+)\1/g;
+
+  const warnings = new Set();
+  let match;
+
+  while ((match = pathRegex.exec(code)) !== null) {
+    const relativePath = match[2];
+
+    // Ignore core modules or external packages
+    if (!relativePath.startsWith('.') && !relativePath.startsWith('/')) continue;
+
+    const absolutePath = path.resolve(rootPath, relativePath);
+    const possiblePaths = [
+      absolutePath,
+      `${absolutePath}.js`,
+      `${absolutePath}.ts`,
+      `${absolutePath}.json`,
+      path.join(absolutePath, 'index.js'),
+    ];
+
+    const fileExists = possiblePaths.some(fs.existsSync);
+
+    if (!fileExists) {
+      warnings.add(`- Path "${relativePath}" does not exist relative to the project root.`);
+    }
+  }
+
+  return [...warnings].join('\n');
 }
 
 function getInitialHtml() {
