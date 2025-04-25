@@ -1,52 +1,13 @@
-// // The module 'vscode' contains the VS Code extensibility API
-// // Import the module and reference it with the alias vscode in your code below
-// const vscode = require('vscode');
-
-// // This method is called when your extension is activated
-// // Your extension is activated the very first time the command is executed
-
-// /**
-//  * @param {vscode.ExtensionContext} context
-//  */
-
-// vscode.window.showInformationMessage('🔥 EXTENSION LOADED 🔥');
-
-// function activate(context) {
-
-// 	// Use the console to output diagnostic information (console.log) and errors (console.error)
-// 	// This line of code will only be executed once when your extension is activated
-// 	console.log('Congratulations, your extension "extension" is now active!');
-
-// 	// The command has been defined in the package.json file
-// 	// Now provide the implementation of the command with  registerCommand
-// 	// The commandId parameter must match the command field in package.json
-// 	const disposable = vscode.commands.registerCommand('extension.helloWorld', function () {
-// 		// The code you place here will be executed every time your command is executed
-
-// 		// Display a message box to the user
-// 		vscode.window.showInformationMessage('Hello World from vscode_extension!');
-// 	});
-
-// 	context.subscriptions.push(disposable);
-// }
-
-// // This method is called when your extension is deactivated
-// function deactivate() {}
-
-// module.exports = {
-// 	activate,
-// 	deactivate
-// }
 const vscode = require('vscode');
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 
-const GEMINI_API_URL =
-  "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
-const GEMINI_API_KEY = 'AIzaSyDlCGWlX5o7I9nDF8kEtqORgfQQqp0Fwbo';
+const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
+const GEMINI_API_KEY = 'AIzaSyDMcPMqA70msaMFXDZLIVmeJcm64WnD6YI';
 
 let panel = undefined;
+let changeCounter = 0;
 
 function activate(context) {
   context.subscriptions.push(
@@ -64,21 +25,59 @@ function activate(context) {
         panel.webview.html = getInitialHtml();
 
         panel.webview.onDidReceiveMessage(async (msg) => {
-          if (msg.command === 'analyze') {
-            const editor = vscode.window.visibleTextEditors.find(
-              e => e.viewColumn === vscode.ViewColumn.One
-            );
-
-            if (!editor) {
-              panel?.webview.postMessage({ command: 'display', content: 'No active file open.' });
+          if (msg.command === 'acceptFixes') {
+            console.log("Received message from webview:", msg);
+            
+            const editors = vscode.window.visibleTextEditors;
+            if (editors.length === 0) {
+              vscode.window.showErrorMessage("No editor is open.");
               return;
-            } else {
-              panel?.webview.postMessage({ command: 'display', content: 'Analyzing...' });
             }
 
-            const content = editor.document.getText();
-            const analysis = await analyzeCodeWithPathCheck(content);
-            panel?.webview.postMessage({ command: 'display', content: analysis });
+            const editor = editors[0]; // fallback to first open editor
+            await vscode.window.showTextDocument(editor.document, vscode.ViewColumn.One, false);
+            if (!editor){
+              console.log("Editor is null");
+              return;
+            } 
+          
+            const fixedCode = (msg.fixedText || '').split('\n').slice(1).join('\n');
+            console.log("Fixed Code : ", fixedCode);
+            if (editor.document.getText() === fixedCode) {
+              vscode.window.showInformationMessage("No changes detected. Already up to date.");
+              return;
+            }
+            
+            const entireRange = new vscode.Range(
+              editor.document.positionAt(0),
+              editor.document.positionAt(editor.document.getText().length)
+            );
+          
+            const success = await editor.edit(editBuilder => {
+              editBuilder.replace(entireRange, fixedCode);
+            });
+          
+            if (success) {
+              vscode.window.showInformationMessage('Code updated with fixes!');
+            } else {
+              vscode.window.showErrorMessage('Edit operation failed.');
+            }
+          } else if (msg.command === 'declineFixes') {
+            vscode.window.showInformationMessage('Fixes declined.');
+          }
+        });
+        
+        vscode.workspace.onDidChangeTextDocument(event => {
+          const editor = vscode.window.activeTextEditor;
+          if (!editor || event.document !== editor.document) return;
+      
+          for (const change of event.contentChanges) {
+            changeCounter += change.text.split('\n').length - 1;
+          }
+      
+          if (changeCounter >= 5) {
+            changeCounter = 0;
+            triggerAnalysis();
           }
         });
 
@@ -90,6 +89,21 @@ function activate(context) {
   );
 
   vscode.commands.executeCommand('extension.activateAnalyzer');
+}
+
+function triggerAnalysis() {
+  const editor = vscode.window.activeTextEditor;
+  if (!editor) {
+    panel?.webview.postMessage({ command: 'display', content: 'No active file open.' });
+    return;
+  }
+
+  panel?.webview.postMessage({ command: 'display', content: 'Analyzing...' });
+
+  const content = editor.document.getText();
+  analyzeCodeWithPathCheck(content).then(analysis => {
+    panel?.webview.postMessage({ command: 'display', content: analysis });
+  });
 }
 
 async function analyzeCodeWithPathCheck(code) {
@@ -104,25 +118,24 @@ async function analyzeCodeWithPathCheck(code) {
 }
 
 async function analyzeCode(code) {
-  const prompt = `Analyze the following code line by line. For each line, report only if there is an issue or room for improvement.
-   Use a neat, point‑wise list with a blank line between each point.
+  const prompt = `Analyze the following code line by line.  Analyze the code for the following issues:
 
 1. Syntax errors  
 2. Logical issues  
 3. Performance problems  
 4. Violations of coding best practices (readability, efficiency, maintainability)
 
-If no issues are found, provide a concise summary of what the code does.
+Use that analysis to fix the given code and provide the fixed and correct code line by line. Don't provide:
+1. Analysis
+2. Comments
+3. Fixes
+4. Language of the code
 
-Format guidelines:
- Begin each point with “Line <number>:”  
- Follow with a single, clear sentence describing the issue or improvement  
- Leave one blank line between points  
- Use plain English, no Markdown symbols, no code blocks, no extra formatting  
- Keep explanations concise and beginner‑friendly
+Provide just the fixed code. 
 
-Here is the code to analyze:
-\n\n${code}`;
+In case of no issue, provide the same given code. 
+
+Here is the code to fix:\n\n${code}`;
 
   try {
     const response = await axios.post(
@@ -131,8 +144,15 @@ Here is the code to analyze:
       { headers: { "Content-Type": "application/json" } }
     );
 
-    let extractedText =
-      response.data.candidates?.[0]?.content?.parts?.map(p => p.text).join(" ") || "";
+    let extractedText = response.data.candidates?.[0]?.content?.parts?.map(p => p.text).join("\n") || "";
+
+    let lines = extractedText.split('\n');
+
+    if (lines[0]?.trim().toLowerCase() === "python") {
+      lines.shift();
+    }
+    
+    extractedText = lines.join('\n');
 
     extractedText = extractedText
       .replace(/[*#`]/g, '')
@@ -140,6 +160,8 @@ Here is the code to analyze:
       .trim();
 
     return extractedText;
+
+
   } catch (err) {
     console.error("Gemini API Error:", err);
     return "Error analyzing code.";
@@ -159,7 +181,6 @@ async function analyzeFilePaths(code) {
   while ((match = pathRegex.exec(code)) !== null) {
     const relativePath = match[2];
 
-    // Ignore core modules or external packages
     if (!relativePath.startsWith('.') && !relativePath.startsWith('/')) continue;
 
     const absolutePath = path.resolve(rootPath, relativePath);
@@ -181,9 +202,9 @@ async function analyzeFilePaths(code) {
   return [...warnings].join('\n');
 }
 
+
 function getInitialHtml() {
-  return `
-    <!DOCTYPE html>
+  return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -196,7 +217,7 @@ function getInitialHtml() {
       --button-hover-light: #106ebe;
       --pre-bg-light: #f3f3f3;
       --pre-border-light: #e0e0e0;
-      
+
       --bg-dark: #1e1e1e;
       --text-dark: #e0e0e0;
       --button-bg-dark: #0e639c;
@@ -204,182 +225,121 @@ function getInitialHtml() {
       --pre-bg-dark: #252526;
       --pre-border-dark: #3c3c3c;
     }
-    
+
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+      font-family: sans-serif;
       padding: 1.5rem;
-      line-height: 1.5;
       margin: 0;
-      transition: background-color 0.3s, color 0.3s;
     }
-    
+
     body.light-mode {
       background-color: var(--bg-light);
       color: var(--text-light);
     }
-    
+
     body.dark-mode {
       background-color: var(--bg-dark);
       color: var(--text-dark);
     }
-    
+
     .container {
       max-width: 800px;
       margin: 0 auto;
     }
-    
+
     .header {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-bottom: 1.5rem;
+      margin-bottom: 1rem;
     }
-    
+
     .title {
       font-size: 1.25rem;
       font-weight: 600;
-      margin: 0;
     }
-    
-    .button-group {
+
+    .buttons {
       display: flex;
-      gap: 0.75rem;
-      align-items: center;
+      gap: 0.5rem;
     }
-    
-    button.primary {
-      padding: 0.5rem 1rem;
+
+    .action-button {
+      padding: 0.4rem 0.8rem;
       border: none;
       border-radius: 4px;
-      font-weight: 500;
-      font-size: 0.875rem;
       cursor: pointer;
-      transition: background-color 0.2s, transform 0.1s;
+      font-size: 0.9rem;
     }
-    
-    button.primary:hover {
-      transform: translateY(-1px);
-    }
-    
-    button.primary:active {
-      transform: translateY(0);
-    }
-    
-    .light-mode button.primary {
+
+    .accept {
       background-color: var(--button-bg-light);
       color: white;
     }
-    
-    .light-mode button.primary:hover {
+
+    .accept:hover {
       background-color: var(--button-hover-light);
     }
-    
-    .dark-mode button.primary {
-      background-color: var(--button-bg-dark);
+
+    .decline {
+      background-color: #e81123;
       color: white;
     }
-    
-    .dark-mode button.primary:hover {
-      background-color: var(--button-hover-dark);
+
+    .decline:hover {
+      background-color: #c50f1f;
     }
-    
-    /* Theme toggle slider */
+
+    .output-container {
+      position: relative;
+    }
+
+    pre {
+      padding: 1rem;
+      border-radius: 6px;
+      background-color: var(--pre-bg-light);
+      border: 1px solid var(--pre-border-light);
+      white-space: pre-wrap;
+    }
+
+    .dark-mode pre {
+      background-color: var(--pre-bg-dark);
+      border-color: var(--pre-border-dark);
+    }
+
     .theme-toggle {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .slider {
       position: relative;
       display: inline-block;
       width: 60px;
       height: 28px;
-    }
-    
-    .theme-toggle input {
-      opacity: 0;
-      width: 0;
-      height: 0;
-    }
-    
-    .slider {
-      position: absolute;
-      cursor: pointer;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
       background-color: #ccc;
-      transition: .4s;
       border-radius: 34px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 0 6px;
     }
-    
+
     .slider:before {
-      position: absolute;
       content: "";
+      position: absolute;
       height: 20px;
       width: 20px;
       left: 4px;
       bottom: 4px;
       background-color: white;
-      transition: .4s;
+      transition: 0.4s;
       border-radius: 50%;
-      z-index: 2;
     }
-    
-    input:checked + .slider {
-      background-color: #2c2c2c;
-    }
-    
+
     input:checked + .slider:before {
       transform: translateX(32px);
     }
-    
-    .dark-icon, .light-icon {
-      color: white;
-      font-size: 14px;
-      z-index: 1;
-    }
-    
-    pre {
-      margin-top: 1rem;
-      padding: 1.25rem;
-      border-radius: 6px;
-      font-family: 'SF Mono', Monaco, Menlo, Consolas, 'Courier New', monospace;
-      font-size: 0.9rem;
-      overflow: auto;
-      white-space: pre-wrap;
-      transition: background-color 0.3s, border-color 0.3s;
-    }
-    
-    .light-mode pre {
-      background-color: var(--pre-bg-light);
-      border: 1px solid var(--pre-border-light);
-    }
-    
-    .dark-mode pre {
-      background-color: var(--pre-bg-dark);
-      border: 1px solid var(--pre-border-dark);
-    }
-    
-    .output-container {
-      position: relative;
-    }
-    
-    .status-indicator {
-      position: absolute;
-      top: 1rem;
-      right: 1rem;
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-    }
-    
-    .light-mode .status-indicator {
-      background-color: #888;
-    }
-    
-    .dark-mode .status-indicator {
-      background-color: #aaa;
+
+    input {
+      display: none;
     }
   </style>
 </head>
@@ -387,50 +347,51 @@ function getInitialHtml() {
   <div class="container">
     <div class="header">
       <h1 class="title">Code Analysis Tool</h1>
-      <div class="button-group">
-        <button onclick="analyze()" class="primary">Analyze Code</button>
-        <label class="theme-toggle">
-          <input type="checkbox" id="themeToggle" onchange="toggleTheme()">
-          <span class="slider">
-            <span class="light-icon">☀️</span>
-            <span class="dark-icon">🌙</span>
-          </span>
-        </label>
+      <div class="theme-toggle">
+        <input type="checkbox" id="themeToggle" onchange="toggleTheme()">
+        <span class="slider"></span>
       </div>
     </div>
-    
+
+    <div class="buttons">
+      <button class="action-button accept" onclick="acceptFixes()">Accept Fixes</button>
+      <button class="action-button decline" onclick="declineFixes()">Decline Fixes</button>
+    </div>
+
     <div class="output-container">
-      <span class="status-indicator"></span>
-      <pre id="output">Click "Analyze Code" to see the analysis results here.</pre>
+      <pre id="output">Code analysis will appear here automatically every 2 lines changed.</pre>
     </div>
   </div>
 
   <script>
     const vscode = acquireVsCodeApi();
-    function analyze() {
-      vscode.postMessage({ command: 'analyze' });
-    }
+
     window.addEventListener('message', event => {
       const message = event.data;
       if (message.command === 'display') {
         document.getElementById('output').innerText = message.content;
       }
     });
-    
+
     function toggleTheme() {
       const body = document.body;
-      if (body.classList.contains('light-mode')) {
-        body.classList.remove('light-mode');
-        body.classList.add('dark-mode');
-      } else {
-        body.classList.remove('dark-mode');
-        body.classList.add('light-mode');
-      }
+      body.classList.toggle('dark-mode');
+      body.classList.toggle('light-mode');
+    }
+
+    function acceptFixes() {
+      const fixedText = document.getElementById('output').innerText;
+      console.log("Sending fixed code to extension:", fixedText);
+      vscode.postMessage({ command: 'acceptFixes', fixedText });
+    }
+
+
+    function declineFixes() {
+      vscode.postMessage({ command: 'declineFixes' });
     }
   </script>
 </body>
-</html>
-  `;
+</html>`;
 }
 
 function deactivate() {}
