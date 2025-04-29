@@ -8,6 +8,9 @@ const GEMINI_API_KEY = 'AIzaSyDMcPMqA70msaMFXDZLIVmeJcm64WnD6YI';
 
 let panel = undefined;
 let changeCounter = 0;
+// Create a global array to store code history
+let codeHistory = [];
+const MAX_HISTORY_SIZE = 10; // Maximum number of history entries to keep
 
 function activate(context) {
   context.subscriptions.push(
@@ -56,18 +59,62 @@ function activate(context) {
               editor.document.positionAt(0),
               editor.document.positionAt(editor.document.getText().length)
             );
+            
+            // Store the original code before making changes
+            const originalCode = editor.document.getText();
           
             const success = await editor.edit(editBuilder => {
               editBuilder.replace(entireRange, fixedCode);
             });
           
             if (success) {
+              // Add to history when changes are successfully applied - store the original code instead of fixes
+              addToHistory("Before update", originalCode);
+              panel.webview.postMessage({ command: 'updateHistory', history: codeHistory });
               vscode.window.showInformationMessage('Code updated with fixes!');
             } else {
               vscode.window.showErrorMessage('Edit operation failed.');
             }
           } else if (msg.command === 'declineFixes') {
             vscode.window.showInformationMessage('Fixes declined.');
+          } else if (msg.command === 'undoHistoryEntry') {
+            const historyIndex = msg.index;
+            if (historyIndex >= 0 && historyIndex < codeHistory.length) {
+              const historyCode = codeHistory[historyIndex].code;
+              
+              // Get all visible editors
+              const editors = vscode.window.visibleTextEditors;
+              if (editors.length === 0) {
+                vscode.window.showErrorMessage("No editor is open.");
+                return;
+              }
+              
+              // Use the first visible editor
+              const editor = editors[0];
+              
+              // Make sure to focus the editor before making changes
+              try {
+                await vscode.window.showTextDocument(editor.document, vscode.ViewColumn.One, false);
+                
+                const entireRange = new vscode.Range(
+                  editor.document.positionAt(0),
+                  editor.document.positionAt(editor.document.getText().length)
+                );
+                
+                const success = await editor.edit(editBuilder => {
+                  editBuilder.replace(entireRange, historyCode);
+                });
+                
+                if (success) {
+                  vscode.window.showInformationMessage(`Reverted to previous version`);
+                } else {
+                  vscode.window.showErrorMessage('Failed to undo changes.');
+                }
+              } catch (error) {
+                console.error("Error during undo operation:", error);
+                vscode.window.showErrorMessage(`Error reverting code: ${error.message}`);
+              }
+            }
           }
         });
 
@@ -100,6 +147,21 @@ function activate(context) {
   vscode.commands.executeCommand('extension.activateAnalyzer');
 }
 
+// Function to add entry to code history
+function addToHistory(action, code) {
+  const timestamp = new Date().toLocaleString();
+  codeHistory.unshift({ 
+    timestamp: timestamp, 
+    action: action, 
+    code: code 
+  });
+  
+  // Keep history size under the maximum limit
+  if (codeHistory.length > MAX_HISTORY_SIZE) {
+    codeHistory.pop();
+  }
+}
+
 function triggerAnalysis() {
   const editor = vscode.window.activeTextEditor;
   if (!editor) {
@@ -113,15 +175,27 @@ function triggerAnalysis() {
   const uri = editor.document.uri;
   analyzeCodeWithPathCheck(content, uri).then(analysis => {
     panel?.webview.postMessage({ command: 'display', content: analysis });
+    
+    // Store current code in history rather than analysis
+    
   });
 }
 
 async function analyzeCodeWithPathCheck(code, uri) {
+  // Check if the code contains any import or require statements matching the pathRegex
+  const pathRegex = /import\s+(?:{[^}]*}|(\w+))\s+from\s+(['"])([^'"]+)\2|require\((['"])([^'"]+)\4\)|import\((['"])([^'"]+)\6\)|fs\.(?:readFileSync|readFile|existsSync|openSync|writeFileSync)\((['"])([^'"]+)\8/g;
   
-  const fixedCode = await analyzeFilePaths(code, uri);
-  const analysis = (await analyzeCode(fixedCode));
-  
-  return fixedCode;
+  // Test if the code contains any matches for the pathRegex
+  if (pathRegex.test(code)) {
+    // Reset the regex lastIndex property since we used test() which advances it
+    pathRegex.lastIndex = 0;
+    // If matches exist, run the path analysis
+    const fixedCode = await analyzeFilePaths(code, uri);
+    return fixedCode;
+  } else {
+    // If no matches, skip path analysis and run analyzeCode directly
+    return await analyzeCode(code);
+  }
 }
 
 async function analyzeCode(code) {
@@ -156,15 +230,12 @@ Here is the code to fix:\n\n${code}`;
     let extractedText = response.data.candidates?.[0]?.content?.parts?.map(p => p.text).join("\n") || "";
 
     let lines = extractedText.split('\n');
-
-    if (lines[0]?.trim().toLowerCase() === "python") {
-      lines.shift();
-    }
     
     extractedText = lines.join('\n');
 
     extractedText = extractedText
-      .replace(/[*#`]/g, '')
+      .replace(/```[a-z]*\s*/g, '') // Remove the opening code block marker
+      .replace(/\s*```/g, '') // Remove the closing code block marker
       .replace(/\n\s*\n/g, '\n')
       .trim();
 
@@ -325,7 +396,6 @@ async function findAllFiles(dir) {
   return results;
 }
 
-
 function getInitialHtml() {
   return `<!DOCTYPE html>
 <html lang="en">
@@ -340,6 +410,8 @@ function getInitialHtml() {
       --button-hover-light: #106ebe;
       --pre-bg-light: #f3f3f3;
       --pre-border-light: #e0e0e0;
+      --secondary-bg-light: #f9f9f9;
+      --history-hover-light: #eaeaea;
 
       --bg-dark: #1e1e1e;
       --text-dark: #e0e0e0;
@@ -347,6 +419,8 @@ function getInitialHtml() {
       --button-hover-dark: #1177bb;
       --pre-bg-dark: #252526;
       --pre-border-dark: #3c3c3c;
+      --secondary-bg-dark: #252526;
+      --history-hover-dark: #333333;
     }
 
     body {
@@ -385,6 +459,7 @@ function getInitialHtml() {
     .buttons {
       display: flex;
       gap: 0.5rem;
+      margin-bottom: 1rem;
     }
 
     .action-button {
@@ -415,6 +490,7 @@ function getInitialHtml() {
 
     .output-container {
       position: relative;
+      margin-bottom: 2rem;
     }
 
     pre {
@@ -423,6 +499,8 @@ function getInitialHtml() {
       background-color: var(--pre-bg-light);
       border: 1px solid var(--pre-border-light);
       white-space: pre-wrap;
+      max-height: 400px;
+      overflow: auto;
     }
 
     .dark-mode pre {
@@ -464,6 +542,138 @@ function getInitialHtml() {
     input {
       display: none;
     }
+
+    /* History panel styles */
+    .history-panel {
+      margin-top: 2rem;
+      border-radius: 6px;
+      overflow: hidden;
+      border: 1px solid var(--pre-border-light);
+    }
+
+    .dark-mode .history-panel {
+      border-color: var(--pre-border-dark);
+    }
+
+    .history-header {
+      background-color: var(--button-bg-light);
+      color: white;
+      padding: 0.75rem 1rem;
+      font-weight: 500;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .dark-mode .history-header {
+      background-color: var(--button-bg-dark);
+    }
+
+    .history-list {
+      max-height: 300px;
+      overflow-y: auto;
+    }
+
+    .history-item {
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid var(--pre-border-light);
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .history-item:hover {
+      background-color: var(--history-hover-light);
+    }
+
+    .dark-mode .history-item {
+      border-color: var(--pre-border-dark);
+    }
+
+    .dark-mode .history-item:hover {
+      background-color: var(--history-hover-dark);
+    }
+
+    .history-details {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .history-timestamp {
+      font-size: 0.8rem;
+      color: #666;
+      margin-bottom: 0.25rem;
+    }
+
+    .dark-mode .history-timestamp {
+      color: #aaa;
+    }
+
+    .history-action {
+      font-weight: 500;
+    }
+
+    .history-undo {
+      background-color: #e81123;
+      color: white;
+      padding: 0.3rem 0.6rem;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.8rem;
+    }
+
+    .history-undo:hover {
+      background-color: #c50f1f;
+    }
+
+    .section-tabs {
+      display: flex;
+      margin-bottom: 1rem;
+    }
+
+    .tab {
+      padding: 0.5rem 1rem;
+      cursor: pointer;
+      border: 1px solid var(--pre-border-light);
+      border-bottom: none;
+      border-radius: 4px 4px 0 0;
+      background-color: var(--secondary-bg-light);
+    }
+
+    .dark-mode .tab {
+      border-color: var(--pre-border-dark);
+      background-color: var(--secondary-bg-dark);
+    }
+
+    .tab.active {
+      background-color: var(--button-bg-light);
+      color: white;
+    }
+
+    .dark-mode .tab.active {
+      background-color: var(--button-bg-dark);
+    }
+
+    .panel {
+      display: none;
+    }
+
+    .panel.active {
+      display: block;
+    }
+
+    .no-history {
+      padding: 1rem;
+      font-style: italic;
+      color: #666;
+      text-align: center;
+    }
+
+    .dark-mode .no-history {
+      color: #aaa;
+    }
   </style>
 </head>
 <body class="light-mode">
@@ -476,23 +686,45 @@ function getInitialHtml() {
       </div>
     </div>
 
-    <div class="buttons">
-      <button class="action-button accept" onclick="acceptFixes()">Accept Fixes</button>
-      <button class="action-button decline" onclick="declineFixes()">Decline Fixes</button>
+    <div class="section-tabs">
+      <div class="tab active" onclick="activateTab('analysis-panel')">Analysis</div>
+      <div class="tab" onclick="activateTab('history-panel')">History</div>
     </div>
 
-    <div class="output-container">
-      <pre id="output">Code analysis will appear here automatically every 2 lines changed.</pre>
+    <div id="analysis-panel" class="panel active">
+      <div class="buttons">
+        <button class="action-button accept" onclick="acceptFixes()">Accept Fixes</button>
+        <button class="action-button decline" onclick="declineFixes()">Decline Fixes</button>
+      </div>
+
+      <div class="output-container">
+        <pre id="output">Code analysis will appear here automatically every 2 lines changed.</pre>
+      </div>
+    </div>
+
+    <div id="history-panel" class="panel">
+      <div class="history-panel">
+        <div class="history-header">
+          <span>Previous Code Versions</span>
+        </div>
+        <div id="history-list" class="history-list">
+          <div class="no-history">No history available yet</div>
+        </div>
+      </div>
     </div>
   </div>
 
   <script>
     const vscode = acquireVsCodeApi();
+    let codeHistory = [];
 
     window.addEventListener('message', event => {
       const message = event.data;
       if (message.command === 'display') {
         document.getElementById('output').innerText = message.content;
+      } else if (message.command === 'updateHistory') {
+        codeHistory = message.history;
+        updateHistoryDisplay();
       }
     });
 
@@ -508,9 +740,76 @@ function getInitialHtml() {
       vscode.postMessage({ command: 'acceptFixes', fixedText });
     }
 
-
     function declineFixes() {
       vscode.postMessage({ command: 'declineFixes' });
+    }
+
+    function activateTab(tabId) {
+      // Deactivate all tabs and panels
+      document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+      document.querySelectorAll('.panel').forEach(panel => panel.classList.remove('active'));
+      
+      // Activate selected tab and panel
+      document.querySelector('.tab[onclick="activateTab(\\''+tabId+'\\')"]').classList.add('active');
+      document.getElementById(tabId).classList.add('active');
+    }
+
+    function updateHistoryDisplay() {
+      const historyList = document.getElementById('history-list');
+      
+      if (codeHistory.length === 0) {
+        historyList.innerHTML = '<div class="no-history">No history available yet</div>';
+        return;
+      }
+      
+      historyList.innerHTML = '';
+      
+      codeHistory.forEach((entry, index) => {
+        const item = document.createElement('div');
+        item.className = 'history-item';
+        
+        const details = document.createElement('div');
+        details.className = 'history-details';
+        
+        const timestamp = document.createElement('div');
+        timestamp.className = 'history-timestamp';
+        timestamp.textContent = entry.timestamp;
+        
+        const action = document.createElement('div');
+        action.className = 'history-action';
+        action.textContent = entry.action;
+        
+        details.appendChild(timestamp);
+        details.appendChild(action);
+        
+        const undoButton = document.createElement('button');
+        undoButton.className = 'history-undo';
+        undoButton.textContent = 'Undo';
+        undoButton.onclick = function(e) {
+          e.stopPropagation();
+          undoHistoryEntry(index);
+        };
+        
+        item.appendChild(details);
+        item.appendChild(undoButton);
+        
+        item.addEventListener('click', () => {
+          document.getElementById('output').innerText = entry.code;
+          activateTab('analysis-panel');
+        });
+        
+        historyList.appendChild(item);
+      });
+    }
+
+    function undoHistoryEntry(index) {
+      // Activate the analysis panel first to ensure the editor is accessible
+      activateTab('analysis-panel');
+      
+      // Add a slight delay to ensure UI updates before sending the message
+      setTimeout(() => {
+        vscode.postMessage({ command: 'undoHistoryEntry', index: index });
+      }, 100);
     }
   </script>
 </body>
