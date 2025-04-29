@@ -22,6 +22,8 @@ function activate(context) {
           { enableScripts: true }
         );
 
+        let fixedCodeInPanel = ''; // ⬅️ Store the last "fixed code" from panel
+
         panel.webview.html = getInitialHtml();
 
         panel.webview.onDidReceiveMessage(async (msg) => {
@@ -34,15 +36,17 @@ function activate(context) {
               return;
             }
 
-            const editor = editors[0]; // fallback to first open editor
+            const editor = editors[0];
             await vscode.window.showTextDocument(editor.document, vscode.ViewColumn.One, false);
-            if (!editor){
+            if (!editor) {
               console.log("Editor is null");
               return;
             } 
           
-            const fixedCode = (msg.fixedText || '').split('\n').slice(1).join('\n');
-            console.log("Fixed Code : ", fixedCode);
+            const fixedCode = msg.fixedText || '';
+            fixedCodeInPanel = fixedCode; // ⬅️ Save the latest fixed code from webview
+            console.log("Fixed Code:", fixedCode);
+
             if (editor.document.getText() === fixedCode) {
               vscode.window.showInformationMessage("No changes detected. Already up to date.");
               return;
@@ -66,21 +70,26 @@ function activate(context) {
             vscode.window.showInformationMessage('Fixes declined.');
           }
         });
-        
+
+        let previousLineCount = 0;
+
         vscode.workspace.onDidChangeTextDocument(event => {
           const editor = vscode.window.activeTextEditor;
           if (!editor || event.document !== editor.document) return;
-      
-          for (const change of event.contentChanges) {
-            changeCounter += change.text.split('\n').length - 1;
-          }
-      
-          if (changeCounter >= 5) {
-            changeCounter = 0;
+
+          const currentLineCount = event.document.lineCount;
+
+          if (currentLineCount !== previousLineCount) {
+            previousLineCount = currentLineCount;
             triggerAnalysis();
           }
-        });
 
+          // 💥 Extra Part: Check if document matches the panel's fixed code
+          if (fixedCodeInPanel && editor.document.getText() === fixedCodeInPanel) {
+            vscode.window.showInformationMessage("No changes detected. Already matches panel fixes.");
+          }
+        });
+        
         panel.onDidDispose(() => {
           panel = undefined;
         });
@@ -101,20 +110,18 @@ function triggerAnalysis() {
   panel?.webview.postMessage({ command: 'display', content: 'Analyzing...' });
 
   const content = editor.document.getText();
-  analyzeCodeWithPathCheck(content).then(analysis => {
+  const uri = editor.document.uri;
+  analyzeCodeWithPathCheck(content, uri).then(analysis => {
     panel?.webview.postMessage({ command: 'display', content: analysis });
   });
 }
 
-async function analyzeCodeWithPathCheck(code) {
-  const analysis = await analyzeCode(code);
-  const pathWarnings = await analyzeFilePaths(code);
-
-  if (pathWarnings) {
-    return `${analysis}\n\n⚠️ File Path Issues Detected:\n${pathWarnings}`;
-  }
-
-  return analysis;
+async function analyzeCodeWithPathCheck(code, uri) {
+  
+  const fixedCode = await analyzeFilePaths(code, uri);
+  const analysis = (await analyzeCode(fixedCode));
+  
+  return fixedCode;
 }
 
 async function analyzeCode(code) {
@@ -124,6 +131,8 @@ async function analyzeCode(code) {
 2. Logical issues  
 3. Performance problems  
 4. Violations of coding best practices (readability, efficiency, maintainability)
+
+Don't check for the path errors. Leave the import and export lines as it is.
 
 Use that analysis to fix the given code and provide the fixed and correct code line by line. Don't provide:
 1. Analysis
@@ -168,38 +177,152 @@ Here is the code to fix:\n\n${code}`;
   }
 }
 
-async function analyzeFilePaths(code) {
+async function analyzeFilePaths(code, openedFileUri) {
   const workspaceFolders = vscode.workspace.workspaceFolders;
-  if (!workspaceFolders || workspaceFolders.length === 0) return '';
-
-  const rootPath = workspaceFolders[0].uri.fsPath;
-  const pathRegex = /(?:require\(|import .*? from |fs\.(?:readFileSync|readFile|existsSync|openSync|writeFileSync)\()(['"])([^'"]+)\1/g;
-
-  const warnings = new Set();
-  let match;
-
-  while ((match = pathRegex.exec(code)) !== null) {
-    const relativePath = match[2];
-
-    if (!relativePath.startsWith('.') && !relativePath.startsWith('/')) continue;
-
-    const absolutePath = path.resolve(rootPath, relativePath);
-    const possiblePaths = [
-      absolutePath,
-      `${absolutePath}.js`,
-      `${absolutePath}.ts`,
-      `${absolutePath}.json`,
-      path.join(absolutePath, 'index.js'),
-    ];
-
-    const fileExists = possiblePaths.some(fs.existsSync);
-
-    if (!fileExists) {
-      warnings.add(`- Path "${relativePath}" does not exist relative to the project root.`);
-    }
+  if (!workspaceFolders || workspaceFolders.length === 0) {
+    return { fixedCode: code, pathError: 'no' };
   }
 
-  return [...warnings].join('\n');
+  const rootPath = workspaceFolders[0].uri.fsPath;
+  const currentFilePath = openedFileUri.fsPath;
+  const currentFileDir = path.dirname(currentFilePath);
+  
+  const pathRegex = /import\s+(?:{[^}]*}|(\w+))\s+from\s+(['"])([^'"]+)\2|require\((['"])([^'"]+)\4\)|import\((['"])([^'"]+)\6\)|fs\.(?:readFileSync|readFile|existsSync|openSync|writeFileSync)\((['"])([^'"]+)\8/g;
+
+  let fixedCode = '';
+  let lastIndex = 0;
+  let result;
+
+  while ((result = pathRegex.exec(code)) !== null) {
+      let variableName = result[1] || null;
+      let relativePath = result[3] || result[5] || result[7] || result[9];
+      let quote = result[2] || result[4] || result[6] || result[8];
+      let fullMatch = result[0];
+      const matchStart = result.index;
+      const matchEnd = matchStart + fullMatch.length;
+
+      fixedCode += code.substring(lastIndex, matchStart);
+
+      if (!relativePath || (!relativePath.startsWith('.') && !relativePath.startsWith('/'))) {
+          fixedCode += fullMatch;
+          lastIndex = matchEnd;
+          continue;
+      }
+
+      let correctPath = await findCorrectPath(currentFileDir, relativePath);
+
+      if (!correctPath && variableName) {
+          correctPath = await searchForComponent(rootPath, currentFileDir, variableName);
+      }
+
+      if (correctPath && correctPath !== relativePath) {
+          const newImport = fullMatch.replace(
+              new RegExp(`(['"])${escapeRegExp(relativePath)}\\1`), 
+              `${quote}${correctPath}${quote}`
+          );
+          fixedCode += newImport;
+          console.log(`🔵 Fixed: ${relativePath} → ${correctPath}`);
+      } else {
+          fixedCode += fullMatch;
+      }
+
+      lastIndex = matchEnd;
+  }
+
+  fixedCode += code.substring(lastIndex);
+
+  return fixedCode;
+}
+
+function escapeRegExp(string) {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+async function findCorrectPath(currentFileDir, relativePath) {
+  try {
+    const absolutePath = path.resolve(currentFileDir, relativePath);
+    if (await fileExists(absolutePath)) {
+      return relativePath;
+    }
+
+    const extensions = ['.js', '.ts', '.jsx', '.tsx', '.json'];
+    for (const ext of extensions) {
+      if (await fileExists(absolutePath + ext)) {
+        return relativePath + ext;
+      }
+    }
+
+    for (const ext of extensions) {
+      if (await fileExists(path.join(absolutePath, `index${ext}`))) {
+        return path.join(relativePath, `index${ext}`).replace(/\\/g, '/');
+      }
+    }
+
+    return null;
+  } catch (err) {
+    console.error('findCorrectPath error:', err);
+    return null;
+  }
+}
+
+async function fileExists(filePath) {
+  try {
+    await fs.promises.access(filePath, fs.constants.F_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function searchForComponent(rootPath, currentFileDir, componentName) {
+  const allFiles = await findAllFiles(rootPath);
+
+  const folderMatch = allFiles.find(filePath => {
+    const base = path.basename(filePath);
+    return base.toLowerCase() === componentName.toLowerCase() && fs.lstatSync(filePath).isDirectory();
+  });
+
+  if (folderMatch) {
+    const relative = path.relative(currentFileDir, folderMatch);
+    return fixRelativeSlashes(relative);
+  }
+
+  const fileMatch = allFiles.find(filePath => {
+    const base = path.basename(filePath, path.extname(filePath));
+    return base.toLowerCase() === componentName.toLowerCase();
+  });
+
+  if (fileMatch) {
+    const relative = path.relative(currentFileDir, fileMatch);
+    return fixRelativeSlashes(relative);
+  }
+
+  return null;
+}
+
+function fixRelativeSlashes(p) {
+  let fixed = p.replace(/\\/g, '/');
+  if (!fixed.startsWith('.')) {
+    fixed = './' + fixed;
+  }
+  return fixed;
+}
+
+async function findAllFiles(dir) {
+  let results = [];
+  const entries = await fs.promises.readdir(dir, { withFileTypes: true });
+
+  for (const entry of entries) {
+    const fullPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      results.push(fullPath);
+      const nested = await findAllFiles(fullPath);
+      results = results.concat(nested);
+    } else {
+      results.push(fullPath);
+    }
+  }
+  return results;
 }
 
 
