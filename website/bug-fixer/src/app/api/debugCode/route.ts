@@ -6,7 +6,7 @@ dotenv.config();
 
 const GEMINI_API_URL =
   "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
-const GEMINI_API_KEY = 'AIzaSyDlCGWlX5o7I9nDF8kEtqORgfQQqp0Fwbo';
+const GEMINI_API_KEY = 'AIzaSyDMcPMqA70msaMFXDZLIVmeJcm64WnD6YI';
 
 if (!GEMINI_API_KEY) {
   throw new Error("Missing API Key. Set GEMINI_API_KEY in your environment variables.");
