@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 
 const JUDGE0_API_URL = 'https://judge0-ce.p.rapidapi.com/submissions/';
 
-const JUDGE0_API_KEY = "73defaa51amshdbab19087f63b3ap198c72jsn8c7143ef7919";
+const JUDGE0_API_KEY = "3bf5d4fac8msh701fa5678e01639p1b8657jsn7d5bb94d9a95";
 
 export async function POST(req: Request) {
   try {
