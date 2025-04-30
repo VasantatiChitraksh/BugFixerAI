@@ -698,7 +698,7 @@ function getInitialHtml() {
       </div>
 
       <div class="output-container">
-        <pre id="output">Code analysis will appear here automatically every 2 lines changed.</pre>
+        <pre id="output">Bugs will be fixed here</pre>
       </div>
     </div>
 

@@ -1,27 +1,22 @@
 {
-  "name": "extension",
+  "name": "BugFixerAI",
   "displayName": "vscode_extension",
+  "publisher": "BugFixer",
   "description": "",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "engines": {
     "vscode": "^1.99.0"
   },
   "categories": [
     "Other"
   ],
-  "activationEvents": [
-    "*"
-  ],
+  "activationEvents": [],
   "main": "./extension.js",
   "contributes": {
     "commands": [
       {
-        "command": "extension.helloWorld",
-        "title": "Hello World"
-      },
-      {
-        "command": "extension.analyzeCurrentFile",
-        "title": "Analyze Current File"
+        "command": "extension.activateAnalyzer",
+        "title": "BugFixerAI"
       }
     ]
   },
@@ -48,6 +43,6 @@
     ]
   },
   "dependencies": {
-    "axios": "^1.8.4"
+    "axios": "^1.9.0"
   }
 }
